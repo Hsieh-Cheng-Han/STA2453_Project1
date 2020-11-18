@@ -5,7 +5,7 @@ import pandas as pd
 import re
 import math
 
-def get_maxpages(page=soup,jobs_per_page=15):
+def get_maxpages(page,jobs_per_page=15):
     #First get max number of pages for this job search
     #Each page displays a max of 15 jobs
     searchCountDiv = page.find(name='div', id='searchCountPages')
@@ -19,7 +19,7 @@ def get_maxpages(page=soup,jobs_per_page=15):
     
     return maxpages
 
-def extract_job_title(page=soup):
+def extract_job_title(page):
     jobs = []
     for div in page.find_all(name='div', attrs={'class':'row'}):
         for a in div.find_all(name='a', attrs={'data-tn-element':'jobTitle'}):
@@ -27,7 +27,7 @@ def extract_job_title(page=soup):
     return(jobs)
 
 #The span may either contain text or a link
-def extract_company(page=soup): 
+def extract_company(page): 
     companies = []
     for div in page.find_all(name='div', attrs={'class':'row'}):
         try:
@@ -43,7 +43,7 @@ def extract_company(page=soup):
             companies.append("Nothing_found")
     return(companies)
 
-def extract_salary(page=soup):
+def extract_salary(page):
     salaries = []
     for div in page.find_all(name='div', attrs={'class':'row'}):
         try:
@@ -53,7 +53,7 @@ def extract_salary(page=soup):
             salaries.append('Nothing_found')
     return(salaries)
 
-def extract_location(page=soup):
+def extract_location(page):
     locations = []
     
     for div in page.find_all(name='div', attrs={'class':'row'}):
@@ -71,7 +71,7 @@ def extract_location(page=soup):
             locations.append('Remote')
     return locations
 
-def extract_industry(page=soup):
+def extract_industry(page):
     industries = []
     for div in page.find_all(name='div', attrs={'class':'row'}):
         #sometimes just a span, sometimes the span includes a link
@@ -132,4 +132,4 @@ if __name__ == "__main__":
                     "salary":salaries}
             temp_df = pd.DataFrame(data)
             df = df.append(temp_df)
-            df.to_csv("job_salary.csv", encoding='utf-8')
+            df.to_csv("data/job_salary.csv", encoding='utf-8')
