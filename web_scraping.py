@@ -92,6 +92,53 @@ def extract_industry(page):
             
     return industries
 
+def extract_requirements(page):
+    requirements = []
+    for div in page.find_all(name='div', attrs={'class':'row'}):
+        a = div.find(name='a', attrs={'data-tn-element':'jobTitle'})
+        joblink = "https://ca.indeed.com"+a['href']
+        job_page = requests.get(joblink)
+        soup = BeautifulSoup(job_page.text, 'lxml', from_encoding="utf-8")
+
+        passed=[]
+        col_str = ""
+        #Requirement-like titles are usually bolded
+        for b in soup.find_all(name='b'):
+            #if b.string matches some fuzzy criteria then
+            ## TODO FUZZY MATCHING CRITERIA 
+
+            #if match is acceptable add it to list
+            passed.append(b)
+
+        if (len(b) > 0):
+            for b in passed:
+                #scenario 1 a ul comes right after the title
+                ul = b.parent.findNext(name='ul')
+                if(ul is None):
+                    continue
+                #for ul in uls:
+                #print(ul)
+                for li in ul.findAll('li'):
+                    #print(li)
+                    if(li.string is not None):
+                        col_str = col_str + li.string
+                #scenario 2 it is a sequence of divs UNTIL next <b> tag. 
+                #May not be able to do anything with this one. It is extremely rare ~2%
+        else:
+            ul = page.find(name='ul')
+            #if ul is None throws exception
+            for li in ul.findAll('li'):
+                #print(li)
+                col_str = col_str + li.string
+        #if no valid matches then do ul = b.parent.parent.findNext(name='ul') to find first ul in doc.
+        #scenario 3, NO <b> tag its just a ul (assume the first)
+
+        requirements.append(col_str)
+            
+
+        requirements.append("Nothing_found")
+    return requirements
+
 if __name__ == "__main__":
 
     #Eventually use all cities by removing the Vancouver keyword.
