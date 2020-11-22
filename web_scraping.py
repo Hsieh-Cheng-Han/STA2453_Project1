@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import re
 import math
+from fuzzywuzzy import fuzz
 
 def get_maxpages(page,jobs_per_page=15):
     #First get max number of pages for this job search
@@ -92,7 +93,13 @@ def extract_industry(page):
             
     return industries
 
-def extract_requirements(page):
+def fuzzy_score(Str1, Str2):
+    if Str2 == None:
+        return 100
+    else:
+        return fuzz.partial_ratio(Str1.lower(),Str2.lower())
+
+def extract_requirements(page, match_string = None):
     requirements = []
     for div in page.find_all(name='div', attrs={'class':'row'}):
         a = div.find(name='a', attrs={'data-tn-element':'jobTitle'})
@@ -106,11 +113,11 @@ def extract_requirements(page):
         for b in soup.find_all(name='b'):
             #if b.string matches some fuzzy criteria then
             ## TODO FUZZY MATCHING CRITERIA 
+            if fuzzy_score(b, match_string) > 80:
+                #if match is acceptable add it to list
+                passed.append(b)
 
-            #if match is acceptable add it to list
-            passed.append(b)
-
-        if (len(b) > 0):
+        if (len(passed) > 0):
             for b in passed:
                 #scenario 1 a ul comes right after the title
                 ul = b.parent.findNext(name='ul')
@@ -128,23 +135,22 @@ def extract_requirements(page):
             ul = page.find(name='ul')
             #if ul is None throws exception
             for li in ul.findAll('li'):
-                #print(li)
                 col_str = col_str + li.string
         #if no valid matches then do ul = b.parent.parent.findNext(name='ul') to find first ul in doc.
         #scenario 3, NO <b> tag its just a ul (assume the first)
-
-        requirements.append(col_str)
+        
+        if(col_str != ""):
+            requirements.append(col_str)
+        else:    
+            requirements.append("Nothing_found")
             
-
-        requirements.append("Nothing_found")
     return requirements
 
 if __name__ == "__main__":
-
-    #Eventually use all cities by removing the Vancouver keyword.
+#Eventually use all cities by removing the Vancouver keyword.
 
     keyword_set = {"data+analyst", "data+scientist", "data+engineer", "software+engineer","software+developer","statistician"}
-    columns = ["job_title", "company_name", "requirements", "summary", "salary"]
+    columns = ["job_title", "company_name", "requirements", "location","industry", "salary"]
     df = pd.DataFrame(columns = columns)
     jobs_per_page=15
     location = 'Toronto ON'
@@ -156,27 +162,31 @@ if __name__ == "__main__":
         max_pages = get_maxpages(soup,jobs_per_page)
         if(max_pages is None):
             continue
-        
+
         for start in range(1, max_pages+1):
             #pages show 15 results at a time
-            
+
             #start numbers go 0, 10 ,20 ,30 , etc. but shows 15 results per page.
             #e.g. page 3 is start=20
             page = requests.get("https://ca.indeed.com/jobs?q=" + str(keyword) + 
                                 "&l=Vancouver,+BC&radius=0&jt=fulltime&start=" + str((start*10)-10))
             soup = BeautifulSoup(page.text, 'lxml', from_encoding="utf-8")
+            
             job_titles = extract_job_title(soup)
             locations = extract_location(soup)
             companies = extract_company(soup)
             salaries = extract_salary(soup)
             industry = extract_industry(soup)
-            
+            requirements = extract_requirements(soup)
+            print("===========================")
             #The below texts need to come from the specific page for this job
             #requirements = extract_requirements(soup)
             #summaries = extract_summary(soup)
             data = {"job_title":job_titles, "company_name":companies,
+                    "requirements":requirements,
                     "location":locations, "industry": industry,
                     "salary":salaries}
             temp_df = pd.DataFrame(data)
             df = df.append(temp_df)
-            df.to_csv("data/job_salary.csv", encoding='utf-8')
+            
+
