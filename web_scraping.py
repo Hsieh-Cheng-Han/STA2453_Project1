@@ -5,20 +5,49 @@ import pandas as pd
 import re
 import math
 from fuzzywuzzy import fuzz
+from STA2453_Project1.web_scraping_config import match_list, columns, keyword_set, jobs_per_page
+import time
 
-def get_maxpages(page,jobs_per_page=15):
-    #First get max number of pages for this job search
-    #Each page displays a max of 15 jobs
+def get_maxjobs(page):
+    #Get number of jobs corresponding to search
     searchCountDiv = page.find(name='div', id='searchCountPages')
     if(searchCountDiv is None):
         #No results found for this search result
         return None
     
-    #use regex to extract the max # of jobs
+    #use regex to extract the initial estimate max # of jobs
     results = re.findall('\d+',str(searchCountDiv.string))
-    maxpages = math.ceil(int(results[1]) / jobs_per_page)
-    
+    if(len(results) > 2):
+        #for long numbers separated by commas
+        num_jobs = "".join(results[1:])
+    else:
+        num_jobs = results[1]
+    return int(num_jobs)
+
+
+def get_maxpages(num_jobs,jobs_per_page=15):
+    #Each page displays a max of 15 jobs
+    maxpages = math.ceil(int(num_jobs) / jobs_per_page)
     return maxpages
+
+def get_last_page(search, max_pages):
+    '''get the last page for a search'''
+    last_page = requests.get(search+"&start=" + str((max_pages*10)-10))
+    soup = BeautifulSoup(last_page.text, 'lxml')
+    return soup
+
+def adjust_maxpages(last_page, max_pages, num_jobs, jobs_per_page=15):
+    '''Calculate the true number of max pages given the last page of a search'''
+    deleted_msg = last_page.find(name='p',class_='dupetext')
+    if(deleted_msg is None):
+        return max_pages
+    else:
+        results = re.findall('\d+',str(deleted_msg.text))
+        jobs_removed = int(results[0])
+        jobs_diff = (num_jobs) - jobs_removed
+        return math.ceil(jobs_diff/ jobs_per_page)
+
+
 
 def extract_job_title(page):
     jobs = []
@@ -83,7 +112,7 @@ def extract_industry(page):
             #if inner_span is None this indexing will throw exception
             link = "https://ca.indeed.com"+inner_span['href']
             company_page = requests.get(link)
-            soup = BeautifulSoup(company_page.text, 'lxml', from_encoding="utf-8")
+            soup = BeautifulSoup(company_page.text, 'lxml')
             a = soup.find(name='a',class_='cmp-AboutMetadata-plainLink')
             industries.append(a.string)
             
@@ -99,46 +128,79 @@ def fuzzy_score(Str1, Str2):
     else:
         return fuzz.partial_ratio(Str1.lower(),Str2.lower())
 
-def extract_requirements(page, match_string = None):
+
+def fuzzy_match(Str1, match_list):
+    matches = [None]*len(match_list)
+    for counter, it in enumerate(match_list,start=0):
+        matches[counter] = fuzzy_score(Str1,it) > 75
+    return matches
+
+
+def get_matches(soup, match_list):
+    '''Given a job page find the relevant bold headers.
+
+    Args: 
+        soup (BeautifulSoup page): Html page
+        match_list (List[str]): the list of terms to match
+    Returns:
+        Union[None,List[BeautifulSoup.Tag]]'''
+
+    passed=[]
+    #Requirement-like titles are usually bolded
+    bolds = soup.find_all(name='b')
+    if(bolds is None):
+        return []
+    for b in bolds:
+        if any(fuzzy_match(b.text, match_list)):
+            #if match is acceptable add it to list
+            passed.append(b)
+
+    return passed
+
+def get_col_str(page,passed):
+    col_str = ""
+    if (len(passed) > 0):
+        for b in passed:
+            #scenario 1 a ul comes right after the title
+            ul = b.parent.findNext(name='ul')
+            if(ul is None):
+                continue
+            #for ul in uls:
+            for li in ul.findAll('li'):
+                if(li.string is not None):
+                    col_str = col_str + li.string
+            #scenario 2 it is a sequence of divs UNTIL next <b> tag. 
+            #May not be able to do anything with this one. It is extremely rare ~2%
+    else:
+        ul = None
+        lis = None
+        ul = page.find(name='ul')
+
+        if(ul is not None):
+            lis = ul.findAll('li')
+
+        if(lis is not None):
+            for li in lis:
+                if(li.string is not None):
+                    col_str = col_str + li.string
+    
+    return col_str
+
+
+def extract_requirements(page, match_list):
+    '''Returns:
+        List[str]'''
     requirements = []
     for div in page.find_all(name='div', attrs={'class':'row'}):
         a = div.find(name='a', attrs={'data-tn-element':'jobTitle'})
         joblink = "https://ca.indeed.com"+a['href']
         job_page = requests.get(joblink)
-        soup = BeautifulSoup(job_page.text, 'lxml', from_encoding="utf-8")
+        soup = BeautifulSoup(job_page.text, 'lxml')
+        passed = get_matches(soup, match_list)
 
-        passed=[]
-        col_str = ""
-        #Requirement-like titles are usually bolded
-        for b in soup.find_all(name='b'):
-            #if b.string matches some fuzzy criteria then
-            ## TODO FUZZY MATCHING CRITERIA 
-            if fuzzy_score(b, match_string) > 80:
-                #if match is acceptable add it to list
-                passed.append(b)
-
-        if (len(passed) > 0):
-            for b in passed:
-                #scenario 1 a ul comes right after the title
-                ul = b.parent.findNext(name='ul')
-                if(ul is None):
-                    continue
-                #for ul in uls:
-                #print(ul)
-                for li in ul.findAll('li'):
-                    #print(li)
-                    if(li.string is not None):
-                        col_str = col_str + li.string
-                #scenario 2 it is a sequence of divs UNTIL next <b> tag. 
-                #May not be able to do anything with this one. It is extremely rare ~2%
-        else:
-            ul = page.find(name='ul')
-            #if ul is None throws exception
-            for li in ul.findAll('li'):
-                col_str = col_str + li.string
+        col_str = get_col_str(soup,passed)
         #if no valid matches then do ul = b.parent.parent.findNext(name='ul') to find first ul in doc.
         #scenario 3, NO <b> tag its just a ul (assume the first)
-        
         if(col_str != ""):
             requirements.append(col_str)
         else:    
@@ -148,45 +210,54 @@ def extract_requirements(page, match_string = None):
 
 if __name__ == "__main__":
 #Eventually use all cities by removing the Vancouver keyword.
-
-    keyword_set = {"data+analyst", "data+scientist", "data+engineer", "software+engineer","software+developer","statistician"}
-    columns = ["job_title", "company_name", "requirements", "location","industry", "salary"]
     df = pd.DataFrame(columns = columns)
-    jobs_per_page=15
-    location = 'Toronto ON'
     for keyword in keyword_set:
         #first do a quick preliminary search to find out how many pages
-        page = requests.get("https://ca.indeed.com/jobs?q=" + str(keyword) + 
-                            "&l=Vancouver,+BC&radius=0&jt=fulltime")
-        soup = BeautifulSoup(page.text, 'lxml', from_encoding="utf-8")
-        max_pages = get_maxpages(soup,jobs_per_page)
-        if(max_pages is None):
+        search = "https://ca.indeed.com/jobs?q=" + str(keyword) + \
+                            "&l=Vancouver,+BC&radius=0&jt=fulltime"
+        page = requests.get(search)
+        soup = BeautifulSoup(page.text, 'lxml')
+        num_jobs = get_maxjobs(soup)
+        if(num_jobs is None):
+            print(f"No jobs found for keyword: {keyword}")
+            continue
+        max_pages = get_maxpages(num_jobs,jobs_per_page)
+        last_page = get_last_page(search,max_pages)
+        adjust_pages = adjust_maxpages(last_page,max_pages,num_jobs,jobs_per_page)
+
+        if(adjust_pages is None):
             continue
 
-        for start in range(1, max_pages+1):
+        for start in range(1, adjust_pages+1):
             #pages show 15 results at a time
+            if(start == 50):
+                print("Sleeping to avoid captcha")
+                time.sleep(60)
 
+            print(f"Scraping page {start} of keyword search: {keyword}")
             #start numbers go 0, 10 ,20 ,30 , etc. but shows 15 results per page.
             #e.g. page 3 is start=20
             page = requests.get("https://ca.indeed.com/jobs?q=" + str(keyword) + 
                                 "&l=Vancouver,+BC&radius=0&jt=fulltime&start=" + str((start*10)-10))
-            soup = BeautifulSoup(page.text, 'lxml', from_encoding="utf-8")
+            soup = BeautifulSoup(page.text, 'lxml')
             
             job_titles = extract_job_title(soup)
             locations = extract_location(soup)
             companies = extract_company(soup)
             salaries = extract_salary(soup)
             industry = extract_industry(soup)
-            requirements = extract_requirements(soup)
-            print("===========================")
-            #The below texts need to come from the specific page for this job
-            #requirements = extract_requirements(soup)
-            #summaries = extract_summary(soup)
+            requirements = extract_requirements(soup,match_list=match_list)
+
             data = {"job_title":job_titles, "company_name":companies,
                     "requirements":requirements,
                     "location":locations, "industry": industry,
                     "salary":salaries}
             temp_df = pd.DataFrame(data)
             df = df.append(temp_df)
-            
+            time.sleep(2)
+
+        print("===========================")
+        time.sleep(60)
+
+    df.to_csv('STA2453_Project1/data/job_salary.csv')
 

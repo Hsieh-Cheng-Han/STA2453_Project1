@@ -1,9 +1,12 @@
+import pandas as pd
+import math
+import numpy as np
+
 
 #### clean the salary 
 def convert_salary():
-    import pandas as pd;import math;import numpy as np
 
-    data = pd.read_csv("/Users/liushikai/Desktop/job_salary.csv")
+    data = pd.read_csv("data/job_salary.csv")
 
     salary =  data.salary.tolist()
 
@@ -50,6 +53,6 @@ def convert_salary():
 
     converted_salary = np.multiply(converted_salary, y_m_h).tolist()
     data['salary'] = converted_salary
-    data.to_csv("/Users/liushikai/Desktop/converted_job_salary.csv", encoding='utf-8')
+    data.to_csv("data/clean_job_salary.csv", encoding='utf-8')
 
 convert_salary()
