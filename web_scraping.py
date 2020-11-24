@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import re
 import math
+import os
 from fuzzywuzzy import fuzz
 from STA2453_Project1.web_scraping_config import match_list, columns, keyword_set, jobs_per_page
 import time
@@ -187,6 +188,7 @@ def get_col_str(page,passed):
     return col_str
 
 
+
 def extract_requirements(page, match_list):
     '''Returns:
         List[str]'''
@@ -208,8 +210,22 @@ def extract_requirements(page, match_list):
             
     return requirements
 
+
+def data_folder_create(folder_name):
+    try:
+        # create folder       
+        os.mkdir(folder_name)
+        print("Now create " + folder_name + " folder")
+    except:
+        # if the folder already exists, do nothing
+        pass
+
 if __name__ == "__main__":
 #Eventually use all cities by removing the Vancouver keyword.
+    
+    # create data folder
+    data_folder_create("STA2453_Project1/data")
+
     df = pd.DataFrame(columns = columns)
     for keyword in keyword_set:
         #first do a quick preliminary search to find out how many pages
@@ -228,6 +244,7 @@ if __name__ == "__main__":
         if(adjust_pages is None):
             continue
 
+        print(f"There are totally {adjust_pages} pages to be scrapped.")
         for start in range(1, adjust_pages+1):
             #pages show 15 results at a time
             if(start == 50):
