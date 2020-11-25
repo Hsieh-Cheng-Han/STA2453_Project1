@@ -89,12 +89,6 @@ def extract_location(page):
     
     for div in page.find_all(name='div', attrs={'class':'row'}):
         try:
-            a = div.find(name='a', attrs={'data-tn-element':'companyName'})
-            if(a is None):
-                span = div.find(name='span', class_='company')
-                company = span.string.strip()
-            else:
-                company = a.string.strip()
             span = div.find(name='span', class_='location')
             locations.append(span.string)
         except:
@@ -172,18 +166,19 @@ def get_col_str(page,passed):
                     col_str = col_str + li.string
             #scenario 2 it is a sequence of divs UNTIL next <b> tag. 
             #May not be able to do anything with this one. It is extremely rare ~2%
+    
     else:
         ul = None
         lis = None
-        ul = page.find(name='ul')
+        ul_list = page.find_all(name='ul')
 
-        if(ul is not None):
-            lis = ul.findAll('li')
-
-        if(lis is not None):
-            for li in lis:
-                if(li.string is not None):
-                    col_str = col_str + li.string
+        if(len(ul_list) > 0):
+            for ul in ul_list:
+                lis = ul.findAll('li')
+                if(lis is not None):
+                    for li in lis:
+                        if(li.string is not None):
+                            col_str = col_str + li.string
     
     return col_str
 
