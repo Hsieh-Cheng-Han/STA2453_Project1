@@ -89,6 +89,12 @@ def extract_location(page):
     
     for div in page.find_all(name='div', attrs={'class':'row'}):
         try:
+            a = div.find(name='a', attrs={'data-tn-element':'companyName'})
+            if(a is None):
+                span = div.find(name='span', class_='company')
+                company = span.string.strip()
+            else:
+                company = a.string.strip()
             span = div.find(name='span', class_='location')
             locations.append(span.string)
         except:
@@ -166,19 +172,18 @@ def get_col_str(page,passed):
                     col_str = col_str + li.string
             #scenario 2 it is a sequence of divs UNTIL next <b> tag. 
             #May not be able to do anything with this one. It is extremely rare ~2%
-    
     else:
         ul = None
         lis = None
-        ul_list = page.find_all(name='ul')
+        ul = page.find(name='ul')
 
-        if(len(ul_list) > 0):
-            for ul in ul_list:
-                lis = ul.findAll('li')
-                if(lis is not None):
-                    for li in lis:
-                        if(li.string is not None):
-                            col_str = col_str + li.string
+        if(ul is not None):
+            lis = ul.findAll('li')
+
+        if(lis is not None):
+            for li in lis:
+                if(li.string is not None):
+                    col_str = col_str + li.string
     
     return col_str
 
@@ -205,6 +210,12 @@ def extract_requirements(page, match_list):
             
     return requirements
 
+def extract_date(page):
+    dates = []
+    for div in page.find_all(name='div', attrs={'class':'row'}):
+        date = div.find(name='span', attrs={'class':'date'})
+        dates.append(date.text.strip())
+    return(dates)
 
 def data_folder_create(folder_name):
     try:
@@ -219,7 +230,7 @@ if __name__ == "__main__":
 #Eventually use all cities by removing the Vancouver keyword.
     
     # create data folder
-    data_folder_create("STA2453_Project1/data")
+    #data_folder_create("STA2453_Project1/data")
 
     df = pd.DataFrame(columns = columns)
     for keyword in keyword_set:
@@ -254,22 +265,25 @@ if __name__ == "__main__":
             soup = BeautifulSoup(page.text, 'lxml')
             
             job_titles = extract_job_title(soup)
+            job_categories = np.repeat(np.array(keyword.replace("+", " ")), len(job_titles))
             locations = extract_location(soup)
             companies = extract_company(soup)
+            dates= extract_date(soup)
             salaries = extract_salary(soup)
             industry = extract_industry(soup)
             requirements = extract_requirements(soup,match_list=match_list)
 
-            data = {"job_title":job_titles, "company_name":companies,
+            data = {"job_title":job_titles, "job_category": job_categories,
+                    "company_name":companies,
                     "requirements":requirements,
                     "location":locations, "industry": industry,
-                    "salary":salaries}
+                    "salary":salaries, "post_date":dates}
             temp_df = pd.DataFrame(data)
             df = df.append(temp_df)
             time.sleep(2)
 
         print("===========================")
         time.sleep(60)
-
-    df.to_csv('STA2453_Project1/data/job_salary.csv')
+    print(df)
+    df.to_csv('data/job_salary.csv', index=None)
 
