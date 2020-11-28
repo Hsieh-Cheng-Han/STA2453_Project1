@@ -1,7 +1,11 @@
 import pandas as pd
 import math
 import numpy as np
-
+from fuzzywuzzy import process
+import re
+from sklearn.feature_extraction.text import CountVectorizer
+from nltk.corpus import stopwords
+stop_words = set(stopwords.words('english'))
 
 #### clean the salary 
 def convert_salary():
@@ -56,3 +60,28 @@ def convert_salary():
     data.to_csv("data/clean_job_salary.csv", encoding='utf-8')
 
 convert_salary()
+
+
+# return a data frame
+def clean_requirements(data):
+    # clean requirements
+    requirements = data['requirements']
+    requirements_cleaned = []
+    for i, text in enumerate(requirements):
+        # changing all words to lower case
+        text = text.lower()
+        # changing multiple lines to one line
+        text = text.replace("\n", " ")
+        # removing all punctuations
+        text = re.sub("[^a-z]", " ", text)
+        # removing stop words
+        text = ' '.join([word for word in text.split() if word not in stop_words])
+        requirements_cleaned.append(text)
+
+    bigram_vectorizer = CountVectorizer(ngram_range=(1, 2), max_features=1000)
+    bigram = bigram_vectorizer.fit_transform(requirements_cleaned)
+    feature_names = bigram_vectorizer.get_feature_names()
+    df = pd.DataFrame(bigram.toarray(), columns=feature_names)
+    data['requirements_cleaned'] = np.array(requirements_cleaned)
+    data = pd.concat([data, df], axis=1)
+    return data
