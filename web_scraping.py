@@ -10,6 +10,7 @@ from fuzzywuzzy import fuzz
 from STA2453_Project1.web_scraping_config import *
 import time
 import sys
+import random
 from argparse import ArgumentParser
 
 def get_maxjobs(page):
@@ -224,40 +225,46 @@ def data_folder_create(folder_name):
         pass
 
 
-def web_scrapping(job, location, radius = "100"):     
+def web_scrapping(job, location, radius = "100", file_name = ""):     
 
     df = pd.DataFrame(columns = columns)
     #first do a quick preliminary search to find out how many pages
     search = "https://ca.indeed.com/jobs?q=" + job + \
                         "&l=" + location + "&radius=" + radius + "&jt=fulltime"
-    page = requests.get(search)
+    
+    headers = {
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9", 
+    "Accept-Encoding": "gzip, deflate, br", 
+    "Accept-Language": "zh-TW,zh;q=0.9", 
+    "Host": search,  
+    "Sec-Fetch-Dest": "document", 
+    "Sec-Fetch-Mode": "navigate", 
+    "Sec-Fetch-Site": "none", 
+    "Upgrade-Insecure-Requests": "1", 
+    "User-Agent": "Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.102 Safari/537.36" 
+    }
+    
+    
+    page = requests.get(search, headers = headers)
     soup = BeautifulSoup(page.text, 'lxml')
     num_jobs = get_maxjobs(soup)
     if(num_jobs is None):
-        print("No jobs found for keyword: " + job)
-        print("Sleep 5 minutes to avoid captcha")
-        time.sleep(300)
-        page = requests.get(search)
-        soup = BeautifulSoup(page.text, 'lxml')
-        num_jobs = get_maxjobs(soup)
-        if(num_jobs is None):
-            return df
+        sys.exit("You have been blocked.")
 
     max_pages = get_maxpages(num_jobs,jobs_per_page)
     last_page = get_last_page(search,max_pages)
     adjust_pages = adjust_maxpages(last_page,max_pages,num_jobs,jobs_per_page)
 
+    delay_choices = [3,4,5,6]  
+
     if(adjust_pages is None):
-        print("No webpage found.")
-        time.sleep(300)
-        return df
+        sys.exit("You have been blocked.")
 
     print(f"There are totally {adjust_pages} pages to be scrapped.")
+
+
     for start in range(1, adjust_pages+1):
         #pages show 15 results at a time
-        if(start == 50):
-            print("Sleeping to avoid captcha")
-            time.sleep(60)
 
         print(f"Scraping page {start} of keyword search: {job}")
         #start numbers go 0, 10 ,20 ,30 , etc. but shows 15 results per page.
@@ -282,11 +289,20 @@ def web_scrapping(job, location, radius = "100"):
                 "location":locations, "industry": industry,
                 "salary":salaries, "post_date":dates}
         temp_df = pd.DataFrame(data)
+        print(str(temp_df.shape[0]) + "jobs in this page.")
+        
+        # if you get blocked, stop running
+        if temp_df.shape[0] == 0:
+            start_point = start
+            print("You have been blocked.")
+            break
+
         df = df.append(temp_df)
-        time.sleep(4)
-    
-    print("===========================")
-    time.sleep(60)
+        
+        delay = random.choice(delay_choices)  # randonly choose delay time
+        time.sleep(delay)  
+        df.to_csv(file_name, index=None) # save file for each loop
+
     return df   
 
 if __name__ == "__main__":
@@ -309,27 +325,8 @@ if __name__ == "__main__":
     # save file name
     file_name = "STA2453_Project1/data/" + current_time + "_" + args.job + "_" + args.location + "_" + args.radius + ".csv"
 
-    # if job argument is "all", search all keywords
-    if args.job == "all":
-        job_list = list(keyword_set)
-    else:
-        job_list = [args.job]
-
-    # if location argument is "all", search all locations
-    if args.location == "all":
-        location_list = list(location_set)
-    else:
-        location_list = [args.location]
-
     # empty data frame to start
-    df = pd.DataFrame(columns = columns)    
-
-    # do the web scrapping, append the result
-    for location in location_list:
-        print("Now location is " + location)
-        for job in job_list:
-            df = df.append(web_scrapping(job, location, args.radius))
-            df.to_csv(file_name, index=None)
+    df = web_scrapping(args.job, args.location, args.radius, file_name = file_name)
 
     # save file
     df.to_csv(file_name, index=None)
