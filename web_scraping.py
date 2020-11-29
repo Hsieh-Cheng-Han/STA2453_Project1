@@ -5,9 +5,12 @@ import pandas as pd
 import re
 import math
 import os
-from fuzzywuzzy import fuzz
-from STA2453_Project1.web_scraping_config import match_list, columns, keyword_set, jobs_per_page
 import time
+from fuzzywuzzy import fuzz
+from STA2453_Project1.web_scraping_config import *
+import time
+import sys
+from argparse import ArgumentParser
 
 def get_maxjobs(page):
     #Get number of jobs corresponding to search
@@ -220,64 +223,114 @@ def data_folder_create(folder_name):
         # if the folder already exists, do nothing
         pass
 
-if __name__ == "__main__":
-#Eventually use all cities by removing the Vancouver keyword.
-    
-    # create data folder
-    #data_folder_create("STA2453_Project1/data")
+
+def web_scrapping(job, location, radius = "100"):     
 
     df = pd.DataFrame(columns = columns)
-    for keyword in keyword_set:
-        #first do a quick preliminary search to find out how many pages
-        search = "https://ca.indeed.com/jobs?q=" + str(keyword) + \
-                            "&l=Vancouver,+BC&radius=0&jt=fulltime"
+    #first do a quick preliminary search to find out how many pages
+    search = "https://ca.indeed.com/jobs?q=" + job + \
+                        "&l=" + location + "&radius=" + radius + "&jt=fulltime"
+    page = requests.get(search)
+    soup = BeautifulSoup(page.text, 'lxml')
+    num_jobs = get_maxjobs(soup)
+    if(num_jobs is None):
+        print("No jobs found for keyword: " + job)
+        print("Sleep 5 minutes to avoid captcha")
+        time.sleep(300)
         page = requests.get(search)
         soup = BeautifulSoup(page.text, 'lxml')
         num_jobs = get_maxjobs(soup)
         if(num_jobs is None):
-            print(f"No jobs found for keyword: {keyword}")
-            continue
-        max_pages = get_maxpages(num_jobs,jobs_per_page)
-        last_page = get_last_page(search,max_pages)
-        adjust_pages = adjust_maxpages(last_page,max_pages,num_jobs,jobs_per_page)
+            return df
 
-        if(adjust_pages is None):
-            continue
+    max_pages = get_maxpages(num_jobs,jobs_per_page)
+    last_page = get_last_page(search,max_pages)
+    adjust_pages = adjust_maxpages(last_page,max_pages,num_jobs,jobs_per_page)
 
-        print(f"There are totally {adjust_pages} pages to be scrapped.")
-        for start in range(1, adjust_pages+1):
-            #pages show 15 results at a time
-            if(start == 50):
-                print("Sleeping to avoid captcha")
-                time.sleep(60)
+    if(adjust_pages is None):
+        print("No webpage found.")
+        time.sleep(300)
+        return df
 
-            print(f"Scraping page {start} of keyword search: {keyword}")
-            #start numbers go 0, 10 ,20 ,30 , etc. but shows 15 results per page.
-            #e.g. page 3 is start=20
-            page = requests.get("https://ca.indeed.com/jobs?q=" + str(keyword) + 
-                                "&l=Vancouver,+BC&radius=0&jt=fulltime&start=" + str((start*10)-10))
-            soup = BeautifulSoup(page.text, 'lxml')
-            
-            job_titles = extract_job_title(soup)
-            job_categories = np.repeat(np.array(keyword.replace("+", " ")), len(job_titles))
-            locations = extract_location(soup)
-            companies = extract_company(soup)
-            dates= extract_date(soup)
-            salaries = extract_salary(soup)
-            industry = extract_industry(soup)
-            requirements = extract_requirements(soup,match_list=match_list)
+    print(f"There are totally {adjust_pages} pages to be scrapped.")
+    for start in range(1, adjust_pages+1):
+        #pages show 15 results at a time
+        if(start == 50):
+            print("Sleeping to avoid captcha")
+            time.sleep(60)
 
-            data = {"job_title":job_titles, "job_category": job_categories,
-                    "company_name":companies,
-                    "requirements":requirements,
-                    "location":locations, "industry": industry,
-                    "salary":salaries, "post_date":dates}
-            temp_df = pd.DataFrame(data)
-            df = df.append(temp_df)
-            time.sleep(2)
+        print(f"Scraping page {start} of keyword search: {job}")
+        #start numbers go 0, 10 ,20 ,30 , etc. but shows 15 results per page.
+        #e.g. page 3 is start=20
+        search_page = search + "&start=" + str(start*10-10)
 
-        print("===========================")
-        time.sleep(60)
-    print(df)
-    df.to_csv('data/job_salary.csv', index=None)
+        page = requests.get(search_page)
+        soup = BeautifulSoup(page.text, 'lxml')
+        
+        job_titles = extract_job_title(soup)
+        job_categories = np.repeat(np.array(job.replace("+", " ")), len(job_titles))
+        locations = extract_location(soup)
+        companies = extract_company(soup)
+        dates= extract_date(soup)
+        salaries = extract_salary(soup)
+        industry = extract_industry(soup)
+        requirements = extract_requirements(soup, match_list=match_list)
+
+        data = {"job_title":job_titles, "job_category": job_categories,
+                "company_name":companies,
+                "requirements":requirements,
+                "location":locations, "industry": industry,
+                "salary":salaries, "post_date":dates}
+        temp_df = pd.DataFrame(data)
+        df = df.append(temp_df)
+        time.sleep(4)
+    
+    print("===========================")
+    time.sleep(60)
+    return df   
+
+if __name__ == "__main__":
+#Eventually use all cities by removing the Vancouver keyword.
+    
+    # create data folder
+    data_folder_create("STA2453_Project1/data")
+
+    # get current time (month-day)
+    ts = time.gmtime()
+    current_time = time.strftime("%m-%d", ts)
+
+    # parse arguments
+    parser = ArgumentParser()
+    parser.add_argument("job", help="job title", type=str)
+    parser.add_argument("-l", help="location", type=str, dest="location", default = "")
+    parser.add_argument("-r", help="search radius", type=str, dest="radius", default = "100")
+    args = parser.parse_args()
+
+    # save file name
+    file_name = "STA2453_Project1/data/" + current_time + "_" + args.job + "_" + args.location + "_" + args.radius + ".csv"
+
+    # if job argument is "all", search all keywords
+    if args.job == "all":
+        job_list = list(keyword_set)
+    else:
+        job_list = [args.job]
+
+    # if location argument is "all", search all locations
+    if args.location == "all":
+        location_list = list(location_set)
+    else:
+        location_list = [args.location]
+
+    # empty data frame to start
+    df = pd.DataFrame(columns = columns)    
+
+    # do the web scrapping, append the result
+    for location in location_list:
+        print("Now location is " + location)
+        for job in job_list:
+            df = df.append(web_scrapping(job, location, args.radius))
+            df.to_csv(file_name, index=None)
+
+    # save file
+    df.to_csv(file_name, index=None)
 
