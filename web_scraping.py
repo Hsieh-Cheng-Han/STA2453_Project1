@@ -100,24 +100,27 @@ def extract_location(page):
             locations.append('Remote')
     return locations
 
-def extract_industry(page):
+def extract_industry(page, salaries):
     industries = []
-    for div in page.find_all(name='div', attrs={'class':'row'}):
-        #sometimes just a span, sometimes the span includes a link
-        span = div.find(name='span', class_='company')
-        
-        try:
-            inner_span = span.find(name='a', attrs={'data-tn-element':'companyName'})
-            #if inner_span is None this indexing will throw exception
-            link = "https://ca.indeed.com"+inner_span['href']
-            company_page = requests.get(link)
-            soup = BeautifulSoup(company_page.text, 'lxml')
-            a = soup.find(name='a',class_='cmp-AboutMetadata-plainLink')
-            industries.append(a.string)
+    for i, div in enumerate(page.find_all(name='div', attrs={'class':'row'})):
+        if salaries[i] != "Nothing_found":
+            #sometimes just a span, sometimes the span includes a link
+            span = div.find(name='span', class_='company')
             
-        except:
-            #Sometimes company do not list an industry.
-            industries.append('Nothing_found')
+            try:
+                inner_span = span.find(name='a', attrs={'data-tn-element':'companyName'})
+                #if inner_span is None this indexing will throw exception
+                link = "https://ca.indeed.com"+inner_span['href']
+                company_page = requests.get(link)
+                soup = BeautifulSoup(company_page.text, 'lxml')
+                a = soup.find(name='a',class_='cmp-AboutMetadata-plainLink')
+                industries.append(a.string)
+                
+            except:
+                #Sometimes company do not list an industry.
+                industries.append('Nothing_found')
+        else:
+            industries.append('no scrapping')
             
     return industries
 
@@ -187,24 +190,27 @@ def get_col_str(page,passed):
 
 
 
-def extract_requirements(page, match_list):
+def extract_requirements(page, match_list, salaries):
     '''Returns:
         List[str]'''
     requirements = []
-    for div in page.find_all(name='div', attrs={'class':'row'}):
-        a = div.find(name='a', attrs={'data-tn-element':'jobTitle'})
-        joblink = "https://ca.indeed.com"+a['href']
-        job_page = requests.get(joblink)
-        soup = BeautifulSoup(job_page.text, 'lxml')
-        passed = get_matches(soup, match_list)
+    for i, div in enumerate(page.find_all(name='div', attrs={'class':'row'})):
+        if salaries[i] != "Nothing_found":
+            a = div.find(name='a', attrs={'data-tn-element':'jobTitle'})
+            joblink = "https://ca.indeed.com"+a['href']
+            job_page = requests.get(joblink)
+            soup = BeautifulSoup(job_page.text, 'lxml')
+            passed = get_matches(soup, match_list)
 
-        col_str = get_col_str(soup,passed)
-        #if no valid matches then do ul = b.parent.parent.findNext(name='ul') to find first ul in doc.
-        #scenario 3, NO <b> tag its just a ul (assume the first)
-        if(col_str != ""):
-            requirements.append(col_str)
-        else:    
-            requirements.append("Nothing_found")
+            col_str = get_col_str(soup,passed)
+            #if no valid matches then do ul = b.parent.parent.findNext(name='ul') to find first ul in doc.
+            #scenario 3, NO <b> tag its just a ul (assume the first)
+            if(col_str != ""):
+                requirements.append(col_str)
+            else:    
+                requirements.append("Nothing_found")
+        else:
+            requirements.append("no scrapping")
             
     return requirements
 
@@ -245,11 +251,11 @@ def web_scrapping(job, location, radius = "100", file_name = ""):
     }
     
     
-    page = requests.get(search)
+    page = requests.get(search, headers = headers)
     soup = BeautifulSoup(page.text, 'lxml')
     num_jobs = get_maxjobs(soup)
     if(num_jobs is None):
-        sys.exit("You have been blocked.")
+        sys.exit("You have been blocked or no jobs found. Try to change other job title.")
 
     max_pages = get_maxpages(num_jobs,jobs_per_page)
     last_page = get_last_page(search,max_pages)
@@ -258,50 +264,55 @@ def web_scrapping(job, location, radius = "100", file_name = ""):
     delay_choices = [3,4,5,6]  
 
     if(adjust_pages is None):
-        sys.exit("You have been blocked.")
+        sys.exit("You have been blocked or no jobs found. Try to change other job title.")
 
     print(f"There are totally {adjust_pages} pages to be scrapped.")
 
+    start_point = start = 1
 
-    for start in range(1, adjust_pages+1):
-        #pages show 15 results at a time
+    while max(start_point, start) < adjust_pages:
+        for start in range(start_point, adjust_pages+1):
+            #pages show 15 results at a time
 
-        print(f"Scraping page {start} of keyword search: {job}")
-        #start numbers go 0, 10 ,20 ,30 , etc. but shows 15 results per page.
-        #e.g. page 3 is start=20
-        search_page = search + "&start=" + str(start*10-10)
+            print(f"Scraping page {start} of keyword search: {job}")
+            #start numbers go 0, 10 ,20 ,30 , etc. but shows 15 results per page.
+            #e.g. page 3 is start=20
+            search_page = search + "&start=" + str(start*10-10)
 
-        page = requests.get(search_page)
-        soup = BeautifulSoup(page.text, 'lxml')
-        
-        job_titles = extract_job_title(soup)
-        job_categories = np.repeat(np.array(job.replace("+", " ")), len(job_titles))
-        locations = extract_location(soup)
-        companies = extract_company(soup)
-        dates= extract_date(soup)
-        salaries = extract_salary(soup)
-        industry = extract_industry(soup)
-        requirements = extract_requirements(soup, match_list=match_list)
+            page = requests.get(search_page)
+            soup = BeautifulSoup(page.text, 'lxml')
 
-        data = {"job_title":job_titles, "job_category": job_categories,
-                "company_name":companies,
-                "requirements":requirements,
-                "location":locations, "industry": industry,
-                "salary":salaries, "post_date":dates}
-        temp_df = pd.DataFrame(data)
-        print(str(temp_df.shape[0]) + "jobs in this page.")
-        
-        # if you get blocked, stop running
-        if temp_df.shape[0] == 0:
-            start_point = start
-            print("You have been blocked.")
-            break
+            salaries = extract_salary(soup)
+            
+            job_titles = extract_job_title(soup)
+            job_categories = np.repeat(np.array(job.replace("+", " ")), len(job_titles))
+            locations = extract_location(soup)
+            companies = extract_company(soup)
+            dates= extract_date(soup)
+            
+            industry = extract_industry(soup, salaries = salaries)
+            requirements = extract_requirements(soup, match_list=match_list, salaries = salaries)
 
-        df = df.append(temp_df)
-        
-        delay = random.choice(delay_choices)  # randonly choose delay time
-        time.sleep(delay)  
-        df.to_csv(file_name, index=None) # save file for each loop
+            data = {"job_title":job_titles, "job_category": job_categories,
+                    "company_name":companies,
+                    "requirements":requirements,
+                    "location":locations, "industry": industry,
+                    "salary":salaries, "post_date":dates}
+            temp_df = pd.DataFrame(data)
+            print(str(temp_df.shape[0]) + "jobs in this page.")
+            
+            if temp_df.shape[0] == 0:
+                start_point = start
+                print("You have been blocked.")
+                print("Sleep 5 minutes and try again.")
+                time.sleep(300)
+                break
+
+            df = df.append(temp_df)
+            
+            delay = random.choice(delay_choices)  # randonly choose delay time
+            time.sleep(delay)  
+            df.to_csv(file_name, index=None) # save file for each loop
 
     return df   
 
@@ -323,10 +334,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # save file name
+    
     file_name = "STA2453_Project1/data/" + current_time + "_" + args.job + "_" + args.location + "_" + args.radius + ".csv"
-
+    #file_name = "STA2453_Project1/data/" + current_time + "_" + job + "_" + location + "_100.csv"
     # empty data frame to start
-    df = web_scrapping(args.job, args.location, args.radius, file_name = file_name)
+    df = web_scrapping(args.job, args.location, "100", file_name = file_name)
+    #df = web_scrapping(job, location, "100", file_name = file_name)
 
     # save file
     df.to_csv(file_name, index=None)
