@@ -245,7 +245,7 @@ def web_scrapping(job, location, radius = "100", file_name = ""):
     }
     
     
-    page = requests.get(search, headers = headers)
+    page = requests.get(search)
     soup = BeautifulSoup(page.text, 'lxml')
     num_jobs = get_maxjobs(soup)
     if(num_jobs is None):
