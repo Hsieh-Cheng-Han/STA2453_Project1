@@ -8,9 +8,7 @@ from nltk.corpus import stopwords
 stop_words = set(stopwords.words('english'))
 
 #### clean the salary 
-def convert_salary():
-
-    data = pd.read_csv("data/job_salary.csv")
+def convert_salary(data):
 
     salary =  data.salary.tolist()
 
@@ -25,15 +23,14 @@ def convert_salary():
                     salary[i] = 0
     
     for i in range(len(salary)):
-        if salary[i] == 0: y_m_h.append(0)
-
+        
+        
+        if salary[i].split('a',1)[1][1:] =='year':
+            y_m_h.append(1)
+        elif salary[i].split('a',1)[1][1:] ==' hour':
+            y_m_h.append(7*30*12)
         else:
-            if salary[i].split('a',1)[1][1:] =='year':
-                y_m_h.append(1)
-            elif salary[i].split('a',1)[1][1:] ==' hour':
-                y_m_h.append(7*30*12)
-            elif salary[i].split('a',1)[1][1:] == 'month':
-                y_m_h.append(12)
+            y_m_h.append(12)
                 
             
     for i in range(len(salary)):
@@ -57,9 +54,9 @@ def convert_salary():
 
     converted_salary = np.multiply(converted_salary, y_m_h).tolist()
     data['salary'] = converted_salary
-    data.to_csv("data/clean_job_salary.csv", encoding='utf-8')
+    return data
 
-convert_salary()
+
 
 
 # return a data frame
