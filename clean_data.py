@@ -7,56 +7,70 @@ from sklearn.feature_extraction.text import CountVectorizer
 from nltk.corpus import stopwords
 stop_words = set(stopwords.words('english'))
 
-#### clean the salary 
+
+#### clean the salary
 def convert_salary(data):
+    salary = data.salary.tolist()
 
-    salary =  data.salary.tolist()
-
-    #-- convert salary into numbers
+    # -- convert salary into numbers
     converted_salary = []
-    #-- to detect if the salary based on year/month/hour
-    y_m_h = []  
+    # -- to detect if the salary based on year/month/hour
+    y_m_h = []
 
-    #-- I use 0 to replace "nothing_found", nust for easier converting the salary
+    # -- I use 0 to replace "nothing_found", nust for easier converting the salary
     for i in range(len(salary)):
-            if salary[i] == "Nothing_found":
-                    salary[i] = 0
-    
+        if salary[i] == "Nothing_found":
+            salary[i] = 0
+
     for i in range(len(salary)):
-        
-        
-        if salary[i].split('a',1)[1][1:] =='year':
+
+        if salary[i].split('a', 1)[1][1:] == 'year':
             y_m_h.append(1)
-        elif salary[i].split('a',1)[1][1:] ==' hour':
-            y_m_h.append(7*30*12)
+        elif salary[i].split('a', 1)[1][1:] == ' hour':
+            y_m_h.append(7 * 30 * 12)
         else:
             y_m_h.append(12)
-                
-            
+
     for i in range(len(salary)):
-        if salary[i] ==0 : pass
+        if salary[i] == 0:
+            pass
 
         else:
             salary[i] = salary[i].split('a')[0].replace(',', '').replace('$', '')[:-1]
 
-
     for i in salary:
-        if i ==0 : converted_salary.append(i)
+        if i == 0:
+            converted_salary.append(i)
 
         else:
             a = i.split('-')
-            if len(a) == 2: 
+            if len(a) == 2:
                 converted_salary.append(np.mean([float(b) for b in a]))
             else:
-                #print("pass")
+                # print("pass")
                 converted_salary.append(float(a[0]))
-
 
     converted_salary = np.multiply(converted_salary, y_m_h).tolist()
     data['salary'] = converted_salary
     return data
 
 
+def clean_location(data):
+    locations = data['location']
+    city = []
+    province = []
+    for row in locations:
+        loc = row.split(',')
+        if len(loc) == 2:
+            city.append(loc[0])
+            province.append(loc[1].strip())
+        else:
+            city.append(loc[0])
+            province.append(loc[0])
+    data = data.drop(columns=['location'])
+    data['city'] = np.array(city)
+    data['province'] = np.array(province)
+    return data
 
 
 # return a data frame
