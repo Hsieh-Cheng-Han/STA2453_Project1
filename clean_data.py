@@ -4,6 +4,7 @@ import numpy as np
 from fuzzywuzzy import process
 import re
 from sklearn.feature_extraction.text import CountVectorizer
+import nltk
 from nltk.corpus import stopwords
 stop_words = set(stopwords.words('english'))
 
